@@ -38,6 +38,7 @@
 #include "SylphideProcessor.h"
 
 #include "navigation/GPS.h"
+#include "navigation/SBAS.h"
 
 template <class FloatT>
 struct GNSS_Data {
@@ -107,14 +108,48 @@ struct GNSS_Data {
       gps->satellite(eph.svid).register_ephemeris(eph);
       return true;
     }
+    
+    // TODO temporal implementation {
+    typedef SBAS_SpaceNode<FloatT> sbas_t;
+    typename sbas_t::IonosphericGridPoints igp;
+    // }
 
     bool load(const GNSS_Data &data){
-      if(data.subframe.gnssID != observer_t::gnss_svid_t::GPS){return false;}
+      bool valid_time_of_reception(data.time_of_reception.week >= 0);
+
+      switch(data.subframe.gnssID){
+        case observer_t::gnss_svid_t::SBAS: {
+          if(!valid_time_of_reception){break;}
+
+          typename observer_t::u32_t *buf((typename observer_t::u32_t *)data.subframe.buffer);
+          int message_type(sbas_t::DataBlock::message_type(buf));
+          switch(message_type){
+            case sbas_t::GEO_NAVIGATION: { // 9
+              typedef typename sbas_t::SatelliteProperties::Ephemeris eph_t;
+              eph_t eph(eph_t::raw_t::fetch(buf));
+              eph.svid = data.subframe.sv_number;
+              eph.adjust_time(data.time_of_reception);
+              break;
+            }
+            case sbas_t::IONO_GRID_POINT_MASKS: // 18
+              igp.update_mask(buf);
+              break;
+            case sbas_t::IONO_DELAY_CORRECTION: // 26
+              igp.register_igp(buf);
+              break;
+          }
+          return false;
+        }
+        case observer_t::gnss_svid_t::GPS:
+          break;
+        default:
+          return false;
+      }
 
       int week_number(data.time_of_reception.week);
       // If invalid week number, estimate it based on current time
       // This is acceptable because it will be used to compensate truncated upper significant bits.
-      if(week_number < 0){week_number = gps_time_t::now().week;}
+      if(!valid_time_of_reception){week_number = gps_time_t::now().week;}
 
       typename observer_t::u32_t *buf((typename observer_t::u32_t *)data.subframe.buffer);
       typedef typename gps_t::template BroadcastedMessage<typename observer_t::u32_t, 30> parser_t;
