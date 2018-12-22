@@ -113,7 +113,7 @@ struct GNSS_Data {
     
     // TODO temporal implementation {
     typedef SBAS_SpaceNode<FloatT> sbas_t;
-    typename sbas_t::IonosphericGridPoints_with_Timeout igp;
+    typename sbas_t::Satellite::igp_t igp;
     // }
 
     bool load(const GNSS_Data &data){
@@ -127,10 +127,8 @@ struct GNSS_Data {
           int message_type(sbas_t::DataBlock::message_type(buf));
           switch(message_type){
             case sbas_t::GEO_NAVIGATION: { // 9
-              typedef typename sbas_t::SatelliteProperties::Ephemeris eph_t;
-              eph_t eph(eph_t::raw_t::fetch(buf));
-              eph.svid = data.subframe.sv_number;
-              eph.adjust_time(data.time_of_reception);
+              typedef typename sbas_t::Satellite::eph_t eph_t;
+              eph_t eph(eph_t::raw_t::fetch(buf, data.subframe.sv_number), data.time_of_reception);
               break;
             }
             case sbas_t::DEGRADATION_PARAMS: { // 10
