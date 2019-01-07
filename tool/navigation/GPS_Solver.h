@@ -46,6 +46,7 @@
 
 #include "GPS.h"
 #include "GPS_Solver_Base.h"
+#include "SBAS.h"
 #include "NTCM.h"
 
 template <class FloatT>
@@ -54,6 +55,7 @@ struct GPS_Solver_GeneralOptions {
 
   enum ionospheric_model_t {
     IONOSPHERIC_KLOBUCHAR,
+    IONOSPHERIC_SBAS,
     IONOSPHERIC_NTCM_GL,
     IONOSPHERIC_NONE, // which allows no correction
     IONOSPHERIC_MODELS,
@@ -152,6 +154,8 @@ class GPS_SinglePositioning : public GPS_Solver_Base<FloatT> {
     inheritate_type(llh_t);
     inheritate_type(enu_t);
 
+    typedef SBAS_SpaceNode<float_t> sbas_space_node_t;
+
     inheritate_type(pos_t);
 
     inheritate_type(prn_obs_t);
@@ -166,6 +170,7 @@ class GPS_SinglePositioning : public GPS_Solver_Base<FloatT> {
     inheritate_type(user_pvt_t);
 #undef inheritate_type
 
+    const sbas_space_node_t *space_node_sbas; ///< optional
   protected:
     const space_node_t &_space_node;
     options_t _options;
@@ -189,6 +194,10 @@ class GPS_SinglePositioning : public GPS_Solver_Base<FloatT> {
           case options_t::IONOSPHERIC_KLOBUCHAR:
             // check whether Klobuchar parameters alpha and beta have been already received
             if(_space_node.is_valid_iono()){break;}
+            opt.ionospheric_models[i] = options_t::IONOSPHERIC_SKIP;
+            continue;
+          case options_t::IONOSPHERIC_SBAS:
+            if(space_node_sbas){break;}
             opt.ionospheric_models[i] = options_t::IONOSPHERIC_SKIP;
             continue;
           case options_t::IONOSPHERIC_NTCM_GL:
@@ -219,7 +228,9 @@ class GPS_SinglePositioning : public GPS_Solver_Base<FloatT> {
     }
 
     GPS_SinglePositioning(const space_node_t &sn, const options_t &opt_wish = options_t())
-        : base_t(), _space_node(sn), _options(available_options(opt_wish)) {}
+        : base_t(), 
+        _space_node(sn), space_node_sbas(NULL),
+        _options(available_options(opt_wish)) {}
 
     ~GPS_SinglePositioning(){}
 
@@ -279,6 +290,9 @@ class GPS_SinglePositioning : public GPS_Solver_Base<FloatT> {
             case options_t::IONOSPHERIC_KLOBUCHAR:
               residual.residual += _space_node.iono_correction(relative_pos, usr_pos.llh, time_arrival);
               break;
+            case options_t::IONOSPHERIC_SBAS: {
+              continue; // TODO placeholder of checking availability and performing correction
+            }
             case options_t::IONOSPHERIC_NTCM_GL: {
               // TODO f_10_7 setup, optimization (mag_model etc.)
               typename space_node_t::pierce_point_res_t pp(_space_node.pierce_point(relative_pos, usr_pos.llh));
