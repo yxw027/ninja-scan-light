@@ -423,7 +423,11 @@ data.sbas.solver_options. expr
             << ',' << "v_down"
             << ',' << "receiver_clock_error_dot_ms"
             << ',' << "used_satellites"
-            << ',' << "PRN";
+            << ',' << "GPS_PRN(1-32)"
+#if !defined(BUILD_WITHOUT_GNSS_MULTI_CONSTELLATION)
+            << ',' << "SBAS_PRN(120-158)"
+#endif
+            ;
       }
     } label;
 
@@ -479,9 +483,17 @@ data.sbas.solver_options. expr
       }
       if(p.pvt.position_solved()){
         out << ',' << p.pvt.used_satellites
-            << ',' << mask_printer_t(p.pvt.used_satellite_mask, 1, 32);
+            << ',' << mask_printer_t(p.pvt.used_satellite_mask, 1, 32)
+#if !defined(BUILD_WITHOUT_GNSS_MULTI_CONSTELLATION)
+            << ',' << mask_printer_t(p.pvt.used_satellite_mask, 120, 158) // SBAS
+#endif
+            ;
       }else{
-        out << ",,";
+        out << ",,"
+#if !defined(BUILD_WITHOUT_GNSS_MULTI_CONSTELLATION)
+            << ","
+#endif
+            ;
       }
       return out;
     }
@@ -495,12 +507,21 @@ data.sbas.solver_options. expr
       friend std::ostream &operator<<(std::ostream &out, const label_t &label){
         out << "clock_index";
         for(int i(1); i <= 32; ++i){
-          out << ',' << "L1_range(" << i << ')'
+          out << ',' << "L1_range(GPS:" << i << ')'
 #if !defined(BUILD_WITHOUT_GNSS_MULTI_FREQUENCY)
-              << ',' << "L2_range(" << i << ')'
+              << ',' << "L2_range(GPS:" << i << ')'
 #endif
-              << ',' << "L1_rate(" << i << ')';
+              << ',' << "L1_rate(GPS:" << i << ')';
         }
+#if !defined(BUILD_WITHOUT_GNSS_MULTI_CONSTELLATION)
+        for(typename sbas_space_node_t::KnownSatellites::list_t::const_iterator it(
+              sbas_space_node_t::KnownSatellites::name_ordered.begin());
+            it != sbas_space_node_t::KnownSatellites::name_ordered.end();
+            ++it){
+          out << ',' << "L1_range(SBAS:" << (*it)->prn << ')'
+              << ',' << "L1_rate(SBAS:" << (*it)->prn << ')';
+        }
+#endif
         return out;
       }
     } label;
@@ -553,6 +574,19 @@ data.sbas.solver_options. expr
       for(int i(1); i <= 32; ++i){
         out << ',' << p(i, cmd_gps);
       }
+#if !defined(BUILD_WITHOUT_GNSS_MULTI_CONSTELLATION)
+      static const cmd_t cmd_sbas[] = {
+        {items_t::L1_PSEUDORANGE, true,  1}, // range
+        {items_t::L1_RANGE_RATE,  false, 1}, // rate
+        {items_t::L1_DOPPLER,     false, -gps_space_node_t::L1_WaveLength()}, // fallback to using doppler
+      };
+      for(typename sbas_space_node_t::KnownSatellites::list_t::const_iterator it(
+            sbas_space_node_t::KnownSatellites::name_ordered.begin());
+          it != sbas_space_node_t::KnownSatellites::name_ordered.end();
+          ++it){
+        out << ',' << p((*it)->prn, cmd_sbas);
+      }
+#endif
       return out;
     }
   };
